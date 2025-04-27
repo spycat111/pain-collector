@@ -2,168 +2,88 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Pain Data Collection</title>
+  <title>Pain Data Collector</title>
   <style>
-    body {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      margin: 0;
-      background: #f0f2f5;
-      font-family: Arial, sans-serif;
-    }
-    .container {
-      background: white;
-      padding: 20px;
-      border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-      max-width: 400px;
-      width: 90%;
-      text-align: center;
-    }
-    h1 {
-      margin-top: 0;
-      font-size: 1.5em;
-      color: #333;
-    }
-    video {
-      width: 100%;
-      border-radius: 4px;
-      background: #000;
-    }
-    label {
-      display: block;
-      margin: 12px 0 4px;
-      color: #555;
-    }
-    #ratingValue {
-      font-weight: bold;
-      margin-left: 4px;
-    }
-    input[type="range"] {
-      width: 100%;
-    }
-    button {
-      margin-top: 12px;
-      width: 100%;
-      padding: 10px;
-      background: #007bff;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      font-size: 1em;
-      cursor: pointer;
-    }
-    button:disabled {
-      background: #aaa;
-      cursor: not-allowed;
-    }
-    #message {
-      margin-top: 12px;
-      min-height: 1.2em;
-      color: #d9534f;
-      font-weight: bold;
-    }
+    body { margin:0; display:flex; justify-content:center; align-items:center;
+           height:100vh; background:#f2f4f7; font-family:sans-serif; }
+    .box { background:#fff; padding:20px; border-radius:8px; box-shadow:0 4px 8px rgba(0,0,0,0.1);
+           width:350px; text-align:center; }
+    h1 { margin-top:0; color:#333; }
+    video { width:100%; border-radius:4px; background:#000; }
+    .help { font-size:0.9em; color:#666; margin:10px 0; }
+    input[type=range] { width:100%; }
+    button { margin-top:10px; width:100%; padding:10px; border:none;
+             background:#007bff; color:#fff; border-radius:4px; font-size:1em;
+             cursor:pointer; }
+    button:disabled { background:#aaa; cursor:default; }
+    #msg { margin-top:8px; min-height:1.2em; font-weight:bold; }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>Rate Your Pain</h1>
-    <p>Please allow camera access and face the camera.</p>
+  <div class="box">
+    <h1>Pain Data Collector</h1>
+    <p class="help">
+      This app captures your face &amp; asks you to rate your pain (0 – 10).<br>
+      When you click “Submit”, your rating and facial data are sent by email to our secure address.
+    </p>
+
     <video id="video" autoplay muted playsinline></video>
 
-    <label for="rating">
-      Pain (0 – 10):
-      <span id="ratingValue">0</span>
-    </label>
+    <label for="rating">Your Pain Level: <strong id="val">0</strong></label>
     <input type="range" id="rating" min="0" max="10" step="1" value="0">
 
     <button id="submit" disabled>Submit</button>
-    <div id="message"></div>
+    <div id="msg"></div>
   </div>
 
   <!-- MediaPipe FaceMesh -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
   <script>
-    const video       = document.getElementById('video');
-    const rating      = document.getElementById('rating');
-    const ratingValue = document.getElementById('ratingValue');
-    const submitBtn   = document.getElementById('submit');
-    const messageDiv  = document.getElementById('message');
-    let lastFeatures = null;
+    const video    = document.getElementById('video');
+    const rating   = document.getElementById('rating');
+    const val      = document.getElementById('val');
+    const btn      = document.getElementById('submit');
+    const msg      = document.getElementById('msg');
+    let lastFeats  = null;
 
-    // Update displayed rating number
-    rating.addEventListener('input', () => {
-      ratingValue.textContent = rating.value;
-    });
+    rating.oninput = () => val.textContent = rating.value;
 
-    // Initialize MediaPipe FaceMesh
     const faceMesh = new FaceMesh({
       locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}`
     });
-    faceMesh.setOptions({
-      maxNumFaces: 1,
-      minDetectionConfidence: 0.5,
-      minTrackingConfidence: 0.5
-    });
-    faceMesh.onResults(onResults);
-
-    // Start camera
-    const camera = new Camera(video, {
-      onFrame: async () => await faceMesh.send({image: video}),
-      width: 640, height: 480
-    });
-    camera.start();
-
-    function onResults(results) {
-      if (results.multiFaceLandmarks && results.multiFaceLandmarks.length) {
-        // Flatten normalized (x,y,z) into a single array
-        const lm = results.multiFaceLandmarks[0];
-        lastFeatures = lm.flatMap(pt => [pt.x, pt.y, pt.z]);
-        submitBtn.disabled = false;
-        messageDiv.textContent = '';
+    faceMesh.setOptions({maxNumFaces:1, minDetectionConfidence:0.5});
+    faceMesh.onResults(r => {
+      if (r.multiFaceLandmarks?.length) {
+        lastFeats = r.multiFaceLandmarks[0].flatMap(lm=>[lm.x,lm.y,lm.z]);
+        btn.disabled = false;
+        msg.textContent = '';
       }
-    }
+    });
 
-    // Handle submit
-    submitBtn.addEventListener('click', async () => {
-      if (!lastFeatures) {
-        messageDiv.textContent = 'No face detected. Please position your face.';
-        return;
-      }
-      submitBtn.disabled = true;
-      messageDiv.style.color = '#555';
-      messageDiv.textContent = 'Submitting…';
+    new Camera(video, {onFrame: async ()=>await faceMesh.send({image:video}), width:640, height:480}).start();
 
+    btn.onclick = async () => {
+      if (!lastFeats) return msg.textContent='No face detected';
+      btn.disabled = true; msg.style.color='#555'; msg.textContent='Sending…';
       try {
-        const resp = await fetch('/submit', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
+        let res = await fetch('/submit',{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
           body: JSON.stringify({
-            features: lastFeatures,
-            rating:   parseInt(rating.value),
+            features: lastFeats,
+            rating:  parseInt(rating.value),
             timestamp: new Date().toISOString()
           })
         });
-        const data = await resp.json();
-        if (resp.ok) {
-          messageDiv.style.color = 'green';
-          messageDiv.textContent = 'Thank you! Submission successful.';
-        } else {
-          messageDiv.style.color = '#d9534f';
-          messageDiv.textContent = 'Error: ' + (data.error || 'Submission failed');
-        }
-      } catch (err) {
-        messageDiv.style.color = '#d9534f';
-        messageDiv.textContent = 'Network error. Please try again.';
+        let d = await res.json();
+        if (res.ok) { msg.style.color='green'; msg.textContent='Submitted, thank you!'; }
+        else       { msg.style.color='red';   msg.textContent='Error: '+(d.error||'Failed'); }
+      } catch(e) {
+        msg.style.color='red'; msg.textContent='Network error';
       }
-      setTimeout(() => {
-        messageDiv.textContent = '';
-        submitBtn.disabled = false;
-      }, 5000);
-    });
+      setTimeout(()=>{ msg.textContent=''; btn.disabled=false; }, 4000);
+    };
   </script>
 </body>
 </html>
