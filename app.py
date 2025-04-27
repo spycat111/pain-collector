@@ -35,11 +35,12 @@ def submit():
     msg['Subject'] = f"Pain Data Submission @ {ts}"
     msg['From']    = SMTP_USER
     msg['To']      = TO_EMAIL
-    msg.set_content(json.dumps({
+    payload = {
         "timestamp":    ts,
         "rating":       rating,
-        "num_features": len(features)
-    }, indent=2))
+        "features":     features
+    }
+    msg.set_content(json.dumps(payload, indent=2))
 
     try:
         logging.info("Connecting to SMTP %s:%d", SMTP_HOST, SMTP_PORT)
