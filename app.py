@@ -1,16 +1,18 @@
-import os, json, smtplib
+import os, json, smtplib, logging
 from flask import Flask, request, jsonify, send_from_directory
 from email.message import EmailMessage
 
-# Serve files from the project root
+# ——— Setup logging to stdout —————————————————————————————
+logging.basicConfig(level=logging.INFO)
+
 app = Flask(__name__, static_folder=None)
 
-# ——— Load all SMTP settings from environment —————————————
-SMTP_HOST = os.environ["SMTP_HOST"]   # e.g. smtp.gmail.com
-SMTP_PORT = int(os.environ["SMTP_PORT"])   # e.g. "587"
-SMTP_USER = os.environ["SMTP_USER"]   # your email address
-SMTP_PASS = os.environ["SMTP_PASS"]   # your App-Password or SMTP auth token
-TO_EMAIL  = os.environ["TO_EMAIL"]    # where submissions get sent
+# Load SMTP settings from environment
+SMTP_HOST = os.environ["SMTP_HOST"]
+SMTP_PORT = int(os.environ["SMTP_PORT"])
+SMTP_USER = os.environ["SMTP_USER"]
+SMTP_PASS = os.environ["SMTP_PASS"]
+TO_EMAIL  = os.environ["TO_EMAIL"]
 
 @app.route('/', methods=['GET'])
 def index():
@@ -24,6 +26,7 @@ def submit():
     ts       = data.get("timestamp")
 
     if features is None or rating is None or ts is None:
+        logging.error("Submit missing fields: %s", data)
         return jsonify({"error": "missing fields"}), 400
 
     # Compose email
@@ -37,17 +40,24 @@ def submit():
         "num_features": len(features)
     }, indent=2))
 
-    # Send via SMTP
+    # Send via SMTP, with logging
     try:
+        logging.info("Connecting to SMTP %s:%d", SMTP_HOST, SMTP_PORT)
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as smtp:
-            smtp.starttls()
+            if SMTP_PORT == 587:
+                smtp.starttls()
+                logging.info("Started TLS")
             smtp.login(SMTP_USER, SMTP_PASS)
+            logging.info("Logged in as %s", SMTP_USER)
             smtp.send_message(msg)
+        logging.info("Email sent to %s for timestamp %s", TO_EMAIL, ts)
     except Exception as e:
+        logging.exception("SMTP send failed")
         return jsonify({"error": f"SMTP send failed: {e}"}), 500
 
     return jsonify({"status":"ok"}), 200
 
 if __name__ == '__main__':
     port = int(os.getenv("PORT", "8000"))
+    logging.info("Starting app on port %d", port)
     app.run(host='0.0.0.0', port=port)
