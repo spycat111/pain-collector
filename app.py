@@ -2,14 +2,16 @@ import os
 import json
 import logging
 import smtplib
+import base64
 from flask import Flask, request, jsonify, send_from_directory
 from email.message import EmailMessage
 
 logging.basicConfig(level=logging.INFO)
 app = Flask(__name__, static_folder=None)
 
-SMTP_HOST = os.environ["SMTP_HOST"]      # e.g. smtp.stackmail.com
-SMTP_PORT = int(os.environ["SMTP_PORT"]) # 465 or 587
+# Load SMTP settings from env
+SMTP_HOST = os.environ["SMTP_HOST"]
+SMTP_PORT = int(os.environ["SMTP_PORT"])
 SMTP_USER = os.environ["SMTP_USER"]
 SMTP_PASS = os.environ["SMTP_PASS"]
 TO_EMAIL  = os.environ["TO_EMAIL"]
@@ -24,10 +26,11 @@ def submit():
     features = data.get("features")
     rating   = data.get("rating")
     ts       = data.get("timestamp")
-    if features is None or rating is None or ts is None:
-        logging.error("Submit missing fields: %s", data)
+    if None in (features, rating, ts):
+        logging.error("Missing fields in submission: %s", data)
         return jsonify(error="missing fields"), 400
 
+    # Compose email
     msg = EmailMessage()
     msg['Subject'] = f"Pain Data Submission @ {ts}"
     msg['From']    = SMTP_USER
@@ -41,19 +44,21 @@ def submit():
     try:
         logging.info("Connecting to SMTP %s:%d", SMTP_HOST, SMTP_PORT)
         if SMTP_PORT == 465:
-            # SSL port
             smtp = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=10)
             logging.info("Using SMTP_SSL")
         else:
-            # TLS port (587)
             smtp = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10)
             smtp.ehlo()
             smtp.starttls()
             smtp.ehlo()
             logging.info("Started TLS")
 
-        smtp.login(SMTP_USER, SMTP_PASS)
-        logging.info("Logged in as %s", SMTP_USER)
+        # Explicit AUTH PLAIN (bypasses CRAM-MD5)
+        auth_str = "\0" + SMTP_USER + "\0" + SMTP_PASS
+        auth_b64 = base64.b64encode(auth_str.encode('utf-8')).decode('ascii')
+        code, resp = smtp.docmd("AUTH PLAIN " + auth_b64)
+        logging.info("AUTH PLAIN response: %s %s", code, resp)
+
         smtp.send_message(msg)
         smtp.quit()
         logging.info("Email sent to %s for timestamp %s", TO_EMAIL, ts)
