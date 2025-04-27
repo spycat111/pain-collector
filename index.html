@@ -2,50 +2,55 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Pain Data Collector</title>
+  <title>Pain Data Collection Study</title>
   <style>
     body { margin:0; display:flex; justify-content:center; align-items:center;
-           height:100vh; background:#f2f4f7; font-family:sans-serif; }
-    .box { background:#fff; padding:20px; border-radius:8px; box-shadow:0 4px 8px rgba(0,0,0,0.1);
-           width:350px; text-align:center; }
-    h1 { margin-top:0; color:#333; }
-    video { width:100%; border-radius:4px; background:#000; }
-    .help { font-size:0.9em; color:#666; margin:10px 0; }
+           height:100vh; background:#eef1f5; font-family:sans-serif; }
+    .box { background:#fff; padding:20px; border-radius:8px;
+           box-shadow:0 4px 12px rgba(0,0,0,0.1);
+           max-width:360px; text-align:center; }
+    h1 { margin:0 0 10px; color:#2c3e50; }
+    p { font-size:0.9em; color:#555; line-height:1.4; }
+    video { width:100%; border-radius:4px; background:#000; margin:10px 0; }
+    label { display:block; margin-top:10px; color:#333; }
+    #val { font-weight:bold; }
     input[type=range] { width:100%; }
-    button { margin-top:10px; width:100%; padding:10px; border:none;
-             background:#007bff; color:#fff; border-radius:4px; font-size:1em;
-             cursor:pointer; }
-    button:disabled { background:#aaa; cursor:default; }
-    #msg { margin-top:8px; min-height:1.2em; font-weight:bold; }
+    button { margin-top:15px; width:100%; padding:10px;
+             background:#27ae60; color:#fff; border:none;
+             border-radius:4px; font-size:1em; cursor:pointer; }
+    button:disabled { background:#aaa; cursor:not-allowed; }
+    #msg { margin-top:8px; height:1.2em; font-weight:bold; }
   </style>
 </head>
 <body>
   <div class="box">
-    <h1>Pain Data Collector</h1>
-    <p class="help">
-      This app captures your face &amp; asks you to rate your pain (0 – 10).<br>
-      When you click “Submit”, your rating and facial data are sent by email to our secure address.
+    <h1>Pain Data Study</h1>
+    <p>
+      <strong>Purpose:</strong> We are collecting facial landmark data paired with your self-reported pain level (0–10) to develop an objective pain-assessment tool.<br>
+      <strong>Usage:</strong> Allow camera access, face the camera, slide to rate your current pain, then click Submit.<br>
+      All data are sent securely to <a href="mailto:info@ihypnosis.org.uk">info@ihypnosis.org.uk</a> and managed by the iHypnosis Research Team.
     </p>
 
     <video id="video" autoplay muted playsinline></video>
 
-    <label for="rating">Your Pain Level: <strong id="val">0</strong></label>
+    <label for="rating">
+      Your pain level: <span id="val">0</span>/10
+    </label>
     <input type="range" id="rating" min="0" max="10" step="1" value="0">
 
     <button id="submit" disabled>Submit</button>
     <div id="msg"></div>
   </div>
 
-  <!-- MediaPipe FaceMesh -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
   <script>
-    const video    = document.getElementById('video');
-    const rating   = document.getElementById('rating');
-    const val      = document.getElementById('val');
-    const btn      = document.getElementById('submit');
-    const msg      = document.getElementById('msg');
-    let lastFeats  = null;
+    const video = document.getElementById('video'),
+          rating = document.getElementById('rating'),
+          val    = document.getElementById('val'),
+          btn    = document.getElementById('submit'),
+          msg    = document.getElementById('msg');
+    let lastFeats = null;
 
     rating.oninput = () => val.textContent = rating.value;
 
@@ -54,33 +59,45 @@
     });
     faceMesh.setOptions({maxNumFaces:1, minDetectionConfidence:0.5});
     faceMesh.onResults(r => {
-      if (r.multiFaceLandmarks?.length) {
+      if (r.multiFaceLandmarks && r.multiFaceLandmarks.length) {
         lastFeats = r.multiFaceLandmarks[0].flatMap(lm=>[lm.x,lm.y,lm.z]);
         btn.disabled = false;
         msg.textContent = '';
       }
     });
 
-    new Camera(video, {onFrame: async ()=>await faceMesh.send({image:video}), width:640, height:480}).start();
+    new Camera(video, {
+      onFrame: async () => await faceMesh.send({image:video}),
+      width:640, height:480
+    }).start();
 
     btn.onclick = async () => {
-      if (!lastFeats) return msg.textContent='No face detected';
-      btn.disabled = true; msg.style.color='#555'; msg.textContent='Sending…';
+      if (!lastFeats) {
+        msg.style.color='red'; msg.textContent='No face detected.';
+        return;
+      }
+      btn.disabled = true; msg.style.color='#555'; msg.textContent='Submitting…';
       try {
         let res = await fetch('/submit',{
           method:'POST',
           headers:{'Content-Type':'application/json'},
           body: JSON.stringify({
             features: lastFeats,
-            rating:  parseInt(rating.value),
+            rating:   parseInt(rating.value),
             timestamp: new Date().toISOString()
           })
         });
         let d = await res.json();
-        if (res.ok) { msg.style.color='green'; msg.textContent='Submitted, thank you!'; }
-        else       { msg.style.color='red';   msg.textContent='Error: '+(d.error||'Failed'); }
+        if (res.ok) {
+          msg.style.color='green';
+          msg.textContent='Submission successful. Thank you!';
+        } else {
+          msg.style.color='red';
+          msg.textContent=`Error: ${d.error||'Submission failed'}`;
+        }
       } catch(e) {
-        msg.style.color='red'; msg.textContent='Network error';
+        msg.style.color='red';
+        msg.textContent='Network error. Try again later.';
       }
       setTimeout(()=>{ msg.textContent=''; btn.disabled=false; }, 4000);
     };
